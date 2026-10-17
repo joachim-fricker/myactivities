@@ -1,0 +1,39 @@
+name: Garmin Auto Sync
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Läuft alle 6 Stunden automatisch
+  workflow_dispatch:      # Ermöglicht einen manuellen Start per Button in GitHub
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install garminconnect requests garth
+
+      - name: Garmin Sync Skript ausführen
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
+        run: |
+          python exporter.py  
+
+      - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
+        run: |
+          git config --global user.name "Garmin Bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add exports/activities/ .garminconnect/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync: Neue Garmin Aktivitäten & aktualisierte Tokens" && git push)
