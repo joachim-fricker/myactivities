@@ -12,8 +12,6 @@ from pathlib import Path
 import json
 import time
 
-import requests
-from garth.exc import GarthException, GarthHTTPError
 
 from garminconnect import (
     Garmin,
@@ -43,56 +41,7 @@ def safe_api_call(api_method, *args, **kwargs):
         result = api_method(*args, **kwargs)
         return True, result, None
 
-    except GarthHTTPError as e:
-        # Handle specific HTTP errors gracefully
-        error_str = str(e)
-        status_code = getattr(getattr(e, "response", None), "status_code", None)
-
-        if status_code == 400 or "400" in error_str:
-            return (
-                False,
-                None,
-                "Endpoint not available (400 Bad Request) - Feature may not be enabled for your account",
-            )
-        elif status_code == 401 or "401" in error_str:
-            return (
-                False,
-                None,
-                "Authentication required (401 Unauthorized) - Please re-authenticate",
-            )
-        elif status_code == 403 or "403" in error_str:
-            return (
-                False,
-                None,
-                "Access denied (403 Forbidden) - Account may not have permission",
-            )
-        elif status_code == 404 or "404" in error_str:
-            return (
-                False,
-                None,
-                "Endpoint not found (404) - Feature may have been moved or removed",
-            )
-        elif status_code == 429 or "429" in error_str:
-            return (
-                False,
-                None,
-                "Rate limit exceeded (429) - Please wait before making more requests",
-            )
-        elif status_code == 500 or "500" in error_str:
-            return (
-                False,
-                None,
-                "Server error (500) - Garmin's servers are experiencing issues",
-            )
-        elif status_code == 503 or "503" in error_str:
-            return (
-                False,
-                None,
-                "Service unavailable (503) - Garmin's servers are temporarily unavailable",
-            )
-        else:
-            return False, None, f"HTTP error: {e}"
-
+   
     except FileNotFoundError:
         return (
             False,
@@ -159,9 +108,8 @@ def init_api() -> Garmin | None:
 
         except (
             FileNotFoundError,
-            GarthHTTPError,
             GarminConnectConnectionError,
-            requests.exceptions.HTTPError,
+           
         ) as err:
             print(f"❌ Connection error: {err}")
             return None
