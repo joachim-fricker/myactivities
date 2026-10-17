@@ -125,68 +125,36 @@ def get_credentials():
 
     return email, password
 
-
 def init_api() -> Garmin | None:
-    """Initialize Garmin API with authentication and token management."""
-
-    # Configure token storage
-    tokenstore = os.getenv("GARMINTOKENS", ".garminconnect")
-    tokenstore_path = Path(tokenstore).expanduser()
-
-    print(f"🔐 Token storage: {tokenstore_path}")
-
-    # Check if token files exist
-    if tokenstore_path.exists():
-        print("📄 Found existing token directory")
-        token_files = list(tokenstore_path.glob("*.json"))
-        if token_files:
-            print(
-                f"🔑 Found {len(token_files)} token file(s): {[f.name for f in token_files]}"
-            )
-        else:
-            print("⚠️ Token directory exists but no token files found")
-    else:
-        print("📭 No existing token directory found")
-
-    # First try to login with stored tokens
-    try:
-        print("🔄 Attempting to use saved authentication tokens...")
-        garmin = Garmin()
-        garmin.login(str(tokenstore_path))
-        print("✅ Successfully logged in using saved tokens!")
-        return garmin
-
-    except (
-        FileNotFoundError,
-        GarthHTTPError,
-        GarminConnectAuthenticationError,
-        GarminConnectConnectionError,
-    ):
-        print("🔑 No valid tokens found. Requesting fresh login credentials.")
-
+    """Initialize Garmin API with authentication."""
+    print("🔄 Logging in with credentials...")
+    
     # Loop for credential entry with retry on auth failure
     while True:
         try:
-            # Get credentials
             email, password = get_credentials()
 
-            print("🔄 Logging in with credentials...")
-            garmin = Garmin(
-                email=email, password=password, is_cn=False
-            )
-            
-            # Login führt automatisch die Token-Speicherung im angegebenen Pfad aus
+            # Token-Pfad definieren (falls unterstützt)
             tokenstore = os.getenv("GARMINTOKENS", "~/.garminconnect")
             tokenstore_path = str(Path(tokenstore).expanduser())
-            
-            garmin.login(tokenstore_path)
 
-            print(f"✅ Login successful! Tokens saved to: {tokenstore_path}")
+            # Garmin-Client initialisieren
+            garmin = Garmin(
+                email=email, password=password, is_cn=False, return_on_mfa=True
+            )
+            
+            result1, result2 = garmin.login()
+
+            if result1 == "needs_mfa":
+                print("🔐 Multi-factor authentication required in GitHub Actions.")
+                print("💡 Tipp: Logge dich einmal lokal auf deinem PC ein und lade den Ordner .garminconnect hoch, damit MFA hier umgangen wird.")
+                sys.exit(1)
+
+            print("✅ Login successful!")
             return garmin
 
         except GarminConnectAuthenticationError:
-            print("❌ Authentication failed:")
-            print("💡 Please check your username and password and try again")
+            print("❌ Authentication failed: Please check your username and password.")
             continue
 
         except (
@@ -196,7 +164,6 @@ def init_api() -> Garmin | None:
             requests.exceptions.HTTPError,
         ) as err:
             print(f"❌ Connection error: {err}")
-            print("💡 Please check your internet connection and try again")
             return None
 
         except KeyboardInterrupt:
