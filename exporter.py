@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 my rewrite of garmin-export based on  the https://github.com/cyberjunky/python-garminconnect library
+(Limited to 2 recent activities for fast syncing)
 """
 
 import logging
@@ -26,8 +27,6 @@ logging.getLogger("garminconnect").setLevel(logging.CRITICAL)
 
 EXPORT_DIR = Path("exports/activities")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-
-PAGE_SIZE = 200
 
 
 def safe_api_call(api_method, *args, **kwargs):
@@ -119,60 +118,38 @@ def init_api() -> Garmin | None:
             return None
 
 
-def fetch_all_activities(api: Garmin, page_size=100):
-    start = 0
-
-    while True:
-        success, activities, error = safe_api_call(
-            api.get_activities, start, page_size
-        )
-
-        if not success or not activities:
-            return
-
-        for activity in activities:
-            yield activity
-
-        start += page_size
-
-
-
-def get_last_exported_activity_id(export_root: Path) -> int | None:
-    if not export_root.exists():
-        return None
-
-    ids = []
-    for p in export_root.iterdir():
-        if p.is_dir() and p.name.isdigit():
-            ids.append(int(p.name))
-
-    return max(ids) if ids else None
-
-def export_all_activities_with_resume(api: Garmin):
+def export_latest_activities(api: Garmin, limit=2):
+    """Holt nur die neusten X Aktivitäten (Standard: 2) statt alle."""
     EXPORT_ROOT = Path("exports/activities")
     EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
 
-    last_id = get_last_exported_activity_id(EXPORT_ROOT)
+    print(f"🚀 Lade die neuesten {limit} Aktivitäten von Garmin...")
+    success, activities, error = safe_api_call(
+        api.get_activities, 0, limit
+    )
 
-    if last_id:
-        print(f"⏩ Resume enabled – last exported activityId: {last_id}")
-    else:
-        print("🆕 No previous export found – full export")
+    if not success or not activities:
+        print(f"⚠️ Konnte keine Aktivitäten abrufen: {error}")
+        return
 
     exported = 0
     skipped = 0
 
-    for activity in fetch_all_activities(api):
+    for activity in activities:
         activity_id = activity.get("activityId")
         if not activity_id:
             continue
 
-        if last_id and activity_id <= last_id:
+        json_path = EXPORT_DIR / f"{activity_id}.json"
+        gpx_path = EXPORT_DIR / f"{activity_id}.gpx"
+
+        # Optional: Überspringen, wenn JSON bereits existiert
+        if json_path.exists() and gpx_path.exists():
+            print(f"⏩ Aktivität {activity_id} bereits vorhanden – übersprungen.")
             skipped += 1
             continue
 
         print(f"➡️ Exporting activity {activity_id}")
-
         export_activity(api, activity)
         exported += 1
 
@@ -218,7 +195,7 @@ def export_activity(api: Garmin, activity: dict):
 
 def main():
     print("=" * 60)
-    print("🏃‍♂️ Export of all garmin activities")
+    print("🏃‍♂️ Fast Export (Latest 2 Garmin Activities)")
     print("=" * 60)
 
     # Initialize API with authentication (will only prompt for credentials if needed)
@@ -228,8 +205,8 @@ def main():
         print("❌ Failed to initialize API. Exiting.")
         return
 
-    # export all activities
-    export_all_activities_with_resume(api)
+    # Nur die neusten 2 Aktivitäten exportieren
+    export_latest_activities(api, limit=2)
 
     print("\n" + "=" * 60)
     print("✅ All done")

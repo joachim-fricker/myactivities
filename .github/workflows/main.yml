@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Python einrichten
         uses: actions/setup-python@v5
@@ -30,8 +32,6 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
         run: |
-          echo "=== Zeige ersten 30 Zeilen von exporter.py == "
-          head -n 30 exporter.py
           python exporter.py  
 
       - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
