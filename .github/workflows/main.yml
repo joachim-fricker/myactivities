@@ -2,7 +2,8 @@ name: Garmin Auto Sync
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Läuft alle 6 Stunden automatisch
+    # Run at 6 AM UTC every day
+    - cron: '0 6 * * *'
   workflow_dispatch:      # Ermöglicht einen manuellen Start per Button in GitHub
 
 jobs:
