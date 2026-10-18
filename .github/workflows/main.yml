@@ -39,5 +39,7 @@ jobs:
         run: |
           git config --global user.name "Garmin Bot"
           git config --global user.email "bot@users.noreply.github.com"
+          # Git-Konflikte/Abweichungen automatisch mit Rebase auflösen
+          git pull origin main --rebase || true
           git add activities/ .garminconnect/
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync: Neue Garmin Aktivitäten & aktualisierte Tokens" && git push)
