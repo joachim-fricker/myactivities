@@ -1,11 +1,11 @@
 name: Garmin Auto Sync
 on:
-  workflow_dispatch: # Erlaubt den manuellen Start über den GitHub-Webbrowser
+ workflow_dispatch:
     inputs:
       limit:
-        description: 'Optional: Max Anzahl Aktivitäten'
-        required: false
-        default: ''
+        description: 'Anzahl der maximal zu ladenden Aktivitäten'
+        required: true
+        default: '3'
         type: string
 jobs:
   sync:
@@ -34,7 +34,7 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
         run: |
-          python exporter.py 3  # Limit auf 3 Aktivitäten setzen, um die API nicht zu überlasten
+          python exporter.py ${{ github.event.inputs.limit }}
 
       - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
         run: |
