@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-my rewrite of garmin-export based on the https://github.com/cyberjunky/python-garminconnect library
+Garmin Export Script - chronological sync based on lastLoaded.txt
 """
 
 import argparse
 import logging
 import os
 import sys
-from datetime import date
 from getpass import getpass
 from pathlib import Path
 import json
@@ -20,131 +19,68 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
-# Suppress garminconnect library logging to avoid tracebacks in normal operation
 logging.getLogger("garminconnect").setLevel(logging.CRITICAL)
 
 EXPORT_DIR = Path("activities")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 LAST_LOADED_FILE = EXPORT_DIR / "lastLoaded.txt"
 
-PAGE_SIZE = 200
+PAGE_SIZE = 100
 
 
 def safe_api_call(api_method, *args, **kwargs):
-    """
-    Safe API call wrapper with comprehensive error handling.
-    Returns (success: bool, result: Any, error_message: str)
-    """
     try:
         result = api_method(*args, **kwargs)
         return True, result, None
-
     except FileNotFoundError:
-        return (
-            False,
-            None,
-            "No valid tokens found. Please login with your email/password to create new tokens.",
-        )
-
+        return False, None, "No valid tokens found."
     except GarminConnectAuthenticationError as e:
         return False, None, f"Authentication issue: {e}"
-
     except GarminConnectConnectionError as e:
         return False, None, f"Connection issue: {e}"
-
     except GarminConnectTooManyRequestsError as e:
         return False, None, f"Rate limit exceeded: {e}"
-
     except Exception as e:
         return False, None, f"Unexpected error: {e}"
 
 
 def get_credentials():
-    """Get email and password from environment or user input."""
     email = os.getenv("EMAIL")
     password = os.getenv("PASSWORD")
-
     if not email:
         email = input("Login email: ")
     if not password:
         password = getpass("Enter password: ")
-
     return email, password
 
 
 def init_api() -> Garmin | None:
-    """Initialize Garmin API with authentication."""
     print("🔄 Logging in with credentials...")
-
     while True:
         try:
             email, password = get_credentials()
-
             tokenstore = os.getenv("GARMINTOKENS", "~/.garminconnect")
             tokenstore_path = str(Path(tokenstore).expanduser())
 
-            garmin = Garmin(
-                email=email, password=password, is_cn=False, return_on_mfa=True
-            )
-
+            garmin = Garmin(email=email, password=password, is_cn=False, return_on_mfa=True)
             result1, result2 = garmin.login()
 
             if result1 == "needs_mfa":
-                print("🔐 Multi-factor authentication required in GitHub Actions.")
-                print("💡 Tipp: Logge dich einmal lokal auf deinem PC ein und lade den Ordner .garminconnect hoch, damit MFA hier umgangen wird.")
+                print("🔐 MFA erforderlich. Bitte lokal einloggen und .garminconnect hochladen.")
                 sys.exit(1)
 
             print("✅ Login successful!")
             return garmin
-
         except GarminConnectAuthenticationError:
-            print("❌ Authentication failed: Please check your username and password.")
+            print("❌ Authentication failed.")
             continue
-
-        except (
-            FileNotFoundError,
-            GarminConnectConnectionError,
-        ) as err:
+        except Exception as err:
             print(f"❌ Connection error: {err}")
             return None
 
-        except KeyboardInterrupt:
-            print("\n👋 Cancelled by user")
-            return None
 
-
-def fetch_all_activities(api: Garmin, page_size=100, max_limit=None):
-    """Generates activities up to max_limit if specified."""
-    start = 0
-    fetched_count = 0
-
-    while True:
-        current_page_size = page_size
-        if max_limit is not None:
-            remaining = max_limit - fetched_count
-            if remaining <= 0:
-                return
-            if remaining < page_size:
-                current_page_size = remaining
-
-        success, activities, error = safe_api_call(
-            api.get_activities, start, current_page_size
-        )
-
-        if not success or not activities:
-            return
-
-        for activity in activities:
-            yield activity
-            fetched_count += 1
-            if max_limit is not None and fetched_count >= max_limit:
-                return
-
-        start += current_page_size
-
-
-def get_last_exported_activity_id() -> int | None:
-    """Liest die ID der zuletzt geladenen Aktivität aus der Triggerdatei."""
+def get_last_loaded_id() -> int | None:
+    """Liest die ID aus lastLoaded.txt (letzte erfolgreich verarbeitete ID)."""
     if not LAST_LOADED_FILE.exists():
         return None
     try:
@@ -154,52 +90,72 @@ def get_last_exported_activity_id() -> int | None:
         return None
 
 
-def save_last_exported_activity_id(activity_id: int):
-    """Speichert die ID der zuletzt geladenen Aktivität in die Triggerdatei."""
+def save_last_loaded_id(activity_id: int):
     LAST_LOADED_FILE.write_text(str(activity_id), encoding="utf-8")
 
 
-def export_all_activities_with_resume(api: Garmin, limit: int | None = None):
-    # 3. Zuerst alle alten/existierenden Aktivitäten laden (Garmin liefert standardmäßig von neu nach alt).
-    # Da wir von oben nach unten durchgehen, merken wir uns die allererste (neueste) gesehene Aktivität für lastLoaded.txt.
-    last_id = get_last_exported_activity_id()
+def export_activities(api: Garmin, limit: int | None = None):
+    # 1. Ermitteln, wie viele Aktivitäten es insgesamt gibt, um von "alt nach neu" zu arbeiten
+    success, total_activities_list, error = safe_api_call(api.get_activities, 0, 1)
+    if not success:
+        print(f"❌ Konnte Aktivitäten nicht abrufen: {error}")
+        return
 
-    if last_id:
-        print(f"⏩ Resume enabled – last exported activityId from {LAST_LOADED_FILE.name}: {last_id}")
+    # Um von der Vergangenheit (älteste) zur Gegenwart (neueste) zu laden, 
+    # holen wir uns alle IDs oder blättern rückwärts durch.
+    # Alternativ holen wir alle Metadaten einmalig leicht ab:
+    print("🔄 Hole Aktivitätsübersicht von Garmin...")
+    all_activities = []
+    start = 0
+    while True:
+        success, batch, error = safe_api_call(api.get_activities, start, PAGE_SIZE)
+        if not success or not batch:
+            break
+        all_activities.extend(batch)
+        if len(batch) < PAGE_SIZE:
+            break
+        start += PAGE_SIZE
+
+    if not all_activities:
+        print("📭 Keine Aktivitäten gefunden.")
+        return
+
+    # Garmin liefert Neueste zuerst -> Wir kehren die Liste um, damit wir in der Vergangenheit beginnen!
+    all_activities.reverse()
+
+    last_loaded_id = get_last_loaded_id()
+    if last_loaded_id:
+        print(f"⏩ Letzte geladene ID laut {LAST_LOADED_FILE.name}: {last_loaded_id}")
     else:
-        print("🆕 No previous export found – full export")
-
-    if limit is not None:
-        print(f"🎯 Limit set to max {limit} activities")
+        print("🆕 Keine lastLoaded.txt gefunden – starte von den ältesten Aktivitäten.")
 
     exported = 0
     skipped = 0
-    newest_activity_id_seen = None
+    processed_count = 0
 
-    for activity in fetch_all_activities(api, max_limit=limit):
+    for activity in all_activities:
         activity_id = activity.get("activityId")
         if not activity_id:
             continue
 
-        # Die allererste Aktivität im Stream ist die neueste
-        if newest_activity_id_seen is None:
-            newest_activity_id_seen = activity_id
-
-        # 5. Anhand von last_id (aus lastLoaded.txt) prüfen, ob Aktivität übersprungen werden kann
-        if last_id and activity_id <= last_id:
+        # Wenn eine ID in lastLoaded steht, überspringen wir alles, was älter oder gleich ist
+        if last_loaded_id and activity_id <= last_loaded_id:
             skipped += 1
             continue
 
+        if limit is not None and processed_count >= limit:
+            break
+
         print(f"➡️ Exporting activity {activity_id}")
         export_activity(api, activity)
+        
+        # Speichere fortlaufend die ID als "zuletzt geladen"
+        save_last_loaded_id(activity_id)
+        
         exported += 1
+        processed_count += 1
 
-    # 4. Aktualisiere lastLoaded.txt mit der neuesten gesehenen Aktivität, falls welche da waren
-    if newest_activity_id_seen is not None:
-        save_last_exported_activity_id(newest_activity_id_seen)
-        print(f"📌 Updated {LAST_LOADED_FILE.name} with latest activityId: {newest_activity_id_seen}")
-
-    print(f"\n✅ Export done: {exported} new, {skipped} skipped")
+    print(f"\n✅ Export beendet: {exported} neu exportiert, {skipped} übersprungen.")
 
 
 def export_activity(api: Garmin, activity: dict):
@@ -207,54 +163,41 @@ def export_activity(api: Garmin, activity: dict):
     if not activity_id:
         return
 
-    base_dir = EXPORT_DIR / str(activity_id)
-    base_dir.mkdir(exist_ok=True)
-
     json_path = EXPORT_DIR / f"{activity_id}.json"
     gpx_path = EXPORT_DIR / f"{activity_id}.gpx"
 
-    # ---- JSON ----
     if not json_path.exists():
         with json_path.open("w", encoding="utf-8") as f:
             json.dump(activity, f, indent=2, ensure_ascii=False)
         print(f"🧾 JSON saved: {json_path.name}")
 
-    # ---- GPX ----
     if not gpx_path.exists():
         success, gpx_data, error = safe_api_call(
             api.download_activity, activity_id, api.ActivityDownloadFormat.GPX
         )
-
         if success and gpx_data:
             gpx_path.write_bytes(gpx_data)
             print(f"🗺️ GPX saved: {gpx_path.name}")
-            time.sleep(0.2)  # freundlich zu Garmin 😇
+            time.sleep(0.2)
         else:
             print(f"⚠️ GPX failed for {activity_id}: {error}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export Garmin activities.")
-    parser.add_argument(
-        "limit",
-        nargs="?",
-        type=int,
-        default=None,
-        help="Optional: Anzahl der maximal abzurufenden Aktivitäten",
-    )
+    parser = argparse.ArgumentParser(description="Export Garmin activities chronologically.")
+    parser.add_argument("limit", nargs="?", type=int, default=None, help="Max activities to load")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("🏃‍♂️ Export of garmin activities")
+    print("🏃‍♂️ Chronological Garmin Export")
     print("=" * 60)
 
     api = init_api()
-
     if not api:
         print("❌ Failed to initialize API. Exiting.")
         return
 
-    export_all_activities_with_resume(api, limit=args.limit)
+    export_activities(api, limit=args.limit)
 
     print("\n" + "=" * 60)
     print("✅ All done")
@@ -265,6 +208,6 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n🚪 Exiting example. Goodbye! 👋")
+        print("\n\n🚪 Exiting. Goodbye! 👋")
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
