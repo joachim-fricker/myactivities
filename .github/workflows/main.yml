@@ -33,11 +33,11 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
         run: |
-          python exporter.py  
+          python exporter.py  limit=10  # Limit auf 10 Aktivitäten setzen, um die API nicht zu überlasten
 
       - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
         run: |
           git config --global user.name "Garmin Bot"
           git config --global user.email "bot@users.noreply.github.com"
-          git add exports/activities/ .garminconnect/
+          git add activities/ .garminconnect/
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync: Neue Garmin Aktivitäten & aktualisierte Tokens" && git push)

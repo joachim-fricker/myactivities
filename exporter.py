@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-my rewrite of garmin-export based on  the https://github.com/cyberjunky/python-garminconnect library
-(Limited to 2 recent activities for fast syncing)
+my rewrite of garmin-export based on the https://github.com/cyberjunky/python-garminconnect library
 """
 
+import argparse
 import logging
 import os
 import sys
@@ -13,7 +13,6 @@ from pathlib import Path
 import json
 import time
 
-
 from garminconnect import (
     Garmin,
     GarminConnectAuthenticationError,
@@ -21,26 +20,25 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
-
 # Suppress garminconnect library logging to avoid tracebacks in normal operation
 logging.getLogger("garminconnect").setLevel(logging.CRITICAL)
 
-EXPORT_DIR = Path("exports/activities")
+EXPORT_DIR = Path("activities")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+LAST_LOADED_FILE = EXPORT_DIR / "lastLoaded.txt"
+
+PAGE_SIZE = 200
 
 
 def safe_api_call(api_method, *args, **kwargs):
     """
     Safe API call wrapper with comprehensive error handling.
-
-    This demonstrates the error handling patterns used throughout the library.
     Returns (success: bool, result: Any, error_message: str)
     """
     try:
         result = api_method(*args, **kwargs)
         return True, result, None
 
-   
     except FileNotFoundError:
         return (
             False,
@@ -73,24 +71,22 @@ def get_credentials():
 
     return email, password
 
+
 def init_api() -> Garmin | None:
     """Initialize Garmin API with authentication."""
     print("🔄 Logging in with credentials...")
-    
-    # Loop for credential entry with retry on auth failure
+
     while True:
         try:
             email, password = get_credentials()
 
-            # Token-Pfad definieren (falls unterstützt)
             tokenstore = os.getenv("GARMINTOKENS", "~/.garminconnect")
             tokenstore_path = str(Path(tokenstore).expanduser())
 
-            # Garmin-Client initialisieren
             garmin = Garmin(
                 email=email, password=password, is_cn=False, return_on_mfa=True
             )
-            
+
             result1, result2 = garmin.login()
 
             if result1 == "needs_mfa":
@@ -108,7 +104,6 @@ def init_api() -> Garmin | None:
         except (
             FileNotFoundError,
             GarminConnectConnectionError,
-           
         ) as err:
             print(f"❌ Connection error: {err}")
             return None
@@ -118,34 +113,80 @@ def init_api() -> Garmin | None:
             return None
 
 
-def export_latest_activities(api: Garmin, limit=2):
-    """Holt nur die neusten X Aktivitäten (Standard: 2) statt alle."""
-    EXPORT_ROOT = Path("exports/activities")
-    EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
+def fetch_all_activities(api: Garmin, page_size=100, max_limit=None):
+    """Generates activities up to max_limit if specified."""
+    start = 0
+    fetched_count = 0
 
-    print(f"🚀 Lade die neuesten {limit} Aktivitäten von Garmin...")
-    success, activities, error = safe_api_call(
-        api.get_activities, 0, limit
-    )
+    while True:
+        current_page_size = page_size
+        if max_limit is not None:
+            remaining = max_limit - fetched_count
+            if remaining <= 0:
+                return
+            if remaining < page_size:
+                current_page_size = remaining
 
-    if not success or not activities:
-        print(f"⚠️ Konnte keine Aktivitäten abrufen: {error}")
-        return
+        success, activities, error = safe_api_call(
+            api.get_activities, start, current_page_size
+        )
+
+        if not success or not activities:
+            return
+
+        for activity in activities:
+            yield activity
+            fetched_count += 1
+            if max_limit is not None and fetched_count >= max_limit:
+                return
+
+        start += current_page_size
+
+
+def get_last_exported_activity_id() -> int | None:
+    """Liest die ID der zuletzt geladenen Aktivität aus der Triggerdatei."""
+    if not LAST_LOADED_FILE.exists():
+        return None
+    try:
+        content = LAST_LOADED_FILE.read_text(encoding="utf-8").strip()
+        return int(content) if content.isdigit() else None
+    except Exception:
+        return None
+
+
+def save_last_exported_activity_id(activity_id: int):
+    """Speichert die ID der zuletzt geladenen Aktivität in die Triggerdatei."""
+    LAST_LOADED_FILE.write_text(str(activity_id), encoding="utf-8")
+
+
+def export_all_activities_with_resume(api: Garmin, limit: int | None = None):
+    # 3. Zuerst alle alten/existierenden Aktivitäten laden (Garmin liefert standardmäßig von neu nach alt).
+    # Da wir von oben nach unten durchgehen, merken wir uns die allererste (neueste) gesehene Aktivität für lastLoaded.txt.
+    last_id = get_last_exported_activity_id()
+
+    if last_id:
+        print(f"⏩ Resume enabled – last exported activityId from {LAST_LOADED_FILE.name}: {last_id}")
+    else:
+        print("🆕 No previous export found – full export")
+
+    if limit is not None:
+        print(f"🎯 Limit set to max {limit} activities")
 
     exported = 0
     skipped = 0
+    newest_activity_id_seen = None
 
-    for activity in activities:
+    for activity in fetch_all_activities(api, max_limit=limit):
         activity_id = activity.get("activityId")
         if not activity_id:
             continue
 
-        json_path = EXPORT_DIR / f"{activity_id}.json"
-        gpx_path = EXPORT_DIR / f"{activity_id}.gpx"
+        # Die allererste Aktivität im Stream ist die neueste
+        if newest_activity_id_seen is None:
+            newest_activity_id_seen = activity_id
 
-        # Optional: Überspringen, wenn JSON bereits existiert
-        if json_path.exists() and gpx_path.exists():
-            print(f"⏩ Aktivität {activity_id} bereits vorhanden – übersprungen.")
+        # 5. Anhand von last_id (aus lastLoaded.txt) prüfen, ob Aktivität übersprungen werden kann
+        if last_id and activity_id <= last_id:
             skipped += 1
             continue
 
@@ -153,7 +194,13 @@ def export_latest_activities(api: Garmin, limit=2):
         export_activity(api, activity)
         exported += 1
 
+    # 4. Aktualisiere lastLoaded.txt mit der neuesten gesehenen Aktivität, falls welche da waren
+    if newest_activity_id_seen is not None:
+        save_last_exported_activity_id(newest_activity_id_seen)
+        print(f"📌 Updated {LAST_LOADED_FILE.name} with latest activityId: {newest_activity_id_seen}")
+
     print(f"\n✅ Export done: {exported} new, {skipped} skipped")
+
 
 def export_activity(api: Garmin, activity: dict):
     activity_id = activity.get("activityId")
@@ -161,9 +208,7 @@ def export_activity(api: Garmin, activity: dict):
         return
 
     base_dir = EXPORT_DIR / str(activity_id)
-    # Note that this empty directory is used to indicate that the activity has been exported
     base_dir.mkdir(exist_ok=True)
-
 
     json_path = EXPORT_DIR / f"{activity_id}.json"
     gpx_path = EXPORT_DIR / f"{activity_id}.gpx"
@@ -174,15 +219,11 @@ def export_activity(api: Garmin, activity: dict):
             json.dump(activity, f, indent=2, ensure_ascii=False)
         print(f"🧾 JSON saved: {json_path.name}")
 
-    
-    gpx_path = EXPORT_DIR / f"{activity_id}.gpx"
-
-    
     # ---- GPX ----
     if not gpx_path.exists():
-
         success, gpx_data, error = safe_api_call(
-            api.download_activity, activity_id,  api.ActivityDownloadFormat.GPX )
+            api.download_activity, activity_id, api.ActivityDownloadFormat.GPX
+        )
 
         if success and gpx_data:
             gpx_path.write_bytes(gpx_data)
@@ -192,21 +233,28 @@ def export_activity(api: Garmin, activity: dict):
             print(f"⚠️ GPX failed for {activity_id}: {error}")
 
 
-
 def main():
+    parser = argparse.ArgumentParser(description="Export Garmin activities.")
+    parser.add_argument(
+        "limit",
+        nargs="?",
+        type=int,
+        default=None,
+        help="Optional: Anzahl der maximal abzurufenden Aktivitäten",
+    )
+    args = parser.parse_args()
+
     print("=" * 60)
-    print("🏃‍♂️ Fast Export (Latest 2 Garmin Activities)")
+    print("🏃‍♂️ Export of garmin activities")
     print("=" * 60)
 
-    # Initialize API with authentication (will only prompt for credentials if needed)
     api = init_api()
 
     if not api:
         print("❌ Failed to initialize API. Exiting.")
         return
 
-    # Nur die neusten 2 Aktivitäten exportieren
-    export_latest_activities(api, limit=2)
+    export_all_activities_with_resume(api, limit=args.limit)
 
     print("\n" + "=" * 60)
     print("✅ All done")
