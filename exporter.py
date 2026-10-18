@@ -81,14 +81,23 @@ def init_api() -> Garmin | None:
 
 def get_processed_ids() -> set[int]:
     """Liest alle verarbeiteten IDs aus ids.txt als Set für schnellen Abgleich."""
+    abs_path = IDS_FILE.resolve()
+    print(f"🔍 DEBUG: Suche ids.txt unter: {abs_path}")
+    
     if not IDS_FILE.exists():
+        print(f"⚠️ DEBUG: Datei existiert physisch NICHT unter diesem Pfad.")
         return set()
+        
     try:
-        lines = IDS_FILE.read_text(encoding="utf-8").splitlines()
-        return {int(line.strip()) for line in lines if line.strip().isdigit()}
-    except Exception:
+        content = IDS_FILE.read_text(encoding="utf-8")
+        print(f"📄 DEBUG: Datei erfolgreich gelesen. Länge: {len(content)} Zeichen.")
+        lines = content.splitlines()
+        ids = {int(line.strip()) for line in lines if line.strip().isdigit()}
+        print(f"🔢 DEBUG: {len(ids)} IDs erfolgreich eingelesen.")
+        return ids
+    except Exception as e:
+        print(f"❌ DEBUG: Fehler beim Lesen der ids.txt: {e}")
         return set()
-
 
 def append_processed_id(activity_id: int):
     """Hängt die neue Aktivitäts-ID ans Ende von ids.txt an (letzte Zeile = zuletzt verarbeitete ID)."""
