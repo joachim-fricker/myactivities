@@ -33,7 +33,7 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
         run: |
-          python exporter.py 10  # Limit auf 10 Aktivitäten setzen, um die API nicht zu überlasten
+          python exporter.py 3  # Limit auf 3 Aktivitäten setzen, um die API nicht zu überlasten
 
       - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
         run: |
