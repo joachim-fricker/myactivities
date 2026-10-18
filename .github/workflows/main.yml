@@ -1,11 +1,12 @@
 name: Garmin Auto Sync
-
 on:
-  schedule:
-    # Run at 6 AM UTC every day
-    - cron: '0 6 * * *'
-  workflow_dispatch:      # Ermöglicht einen manuellen Start per Button in GitHub
-
+  workflow_dispatch: # Erlaubt den manuellen Start über den GitHub-Webbrowser
+    inputs:
+      limit:
+        description: 'Optional: Max Anzahl Aktivitäten'
+        required: false
+        default: ''
+        type: string
 jobs:
   sync:
     runs-on: ubuntu-latest
