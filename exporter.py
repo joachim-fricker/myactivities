@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Garmin Export Script - chronological sync based on lastLoaded.txt
+Garmin Export Script - tracking all processed activity IDs in ids.txt
 """
 
 import argparse
@@ -23,7 +23,7 @@ logging.getLogger("garminconnect").setLevel(logging.CRITICAL)
 
 EXPORT_DIR = Path("activities")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-LAST_LOADED_FILE = EXPORT_DIR / "lastLoaded.txt"
+IDS_FILE = EXPORT_DIR / "ids.txt"
 
 PAGE_SIZE = 100
 
@@ -79,31 +79,24 @@ def init_api() -> Garmin | None:
             return None
 
 
-def get_last_loaded_id() -> int | None:
-    """Liest die ID aus lastLoaded.txt (letzte erfolgreich verarbeitete ID)."""
-    if not LAST_LOADED_FILE.exists():
-        return None
+def get_processed_ids() -> set[int]:
+    """Liest alle verarbeiteten IDs aus ids.txt als Set für schnellen Abgleich."""
+    if not IDS_FILE.exists():
+        return set()
     try:
-        content = LAST_LOADED_FILE.read_text(encoding="utf-8").strip()
-        return int(content) if content.isdigit() else None
+        lines = IDS_FILE.read_text(encoding="utf-8").splitlines()
+        return {int(line.strip()) for line in lines if line.strip().isdigit()}
     except Exception:
-        return None
+        return set()
 
 
-def save_last_loaded_id(activity_id: int):
-    LAST_LOADED_FILE.write_text(str(activity_id), encoding="utf-8")
+def append_processed_id(activity_id: int):
+    """Hängt die neue Aktivitäts-ID ans Ende von ids.txt an (letzte Zeile = zuletzt verarbeitete ID)."""
+    with IDS_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"{activity_id}\n")
 
 
 def export_activities(api: Garmin, limit: int | None = None):
-    # 1. Ermitteln, wie viele Aktivitäten es insgesamt gibt, um von "alt nach neu" zu arbeiten
-    success, total_activities_list, error = safe_api_call(api.get_activities, 0, 1)
-    if not success:
-        print(f"❌ Konnte Aktivitäten nicht abrufen: {error}")
-        return
-
-    # Um von der Vergangenheit (älteste) zur Gegenwart (neueste) zu laden, 
-    # holen wir uns alle IDs oder blättern rückwärts durch.
-    # Alternativ holen wir alle Metadaten einmalig leicht ab:
     print("🔄 Hole Aktivitätsübersicht von Garmin...")
     all_activities = []
     start = 0
@@ -120,14 +113,14 @@ def export_activities(api: Garmin, limit: int | None = None):
         print("📭 Keine Aktivitäten gefunden.")
         return
 
-    # Garmin liefert Neueste zuerst -> Wir kehren die Liste um, damit wir in der Vergangenheit beginnen!
+    # Umkehren, damit wir in der Vergangenheit (älteste) anfangen
     all_activities.reverse()
 
-    last_loaded_id = get_last_loaded_id()
-    if last_loaded_id:
-        print(f"⏩ Letzte geladene ID laut {LAST_LOADED_FILE.name}: {last_loaded_id}")
+    processed_ids = get_processed_ids()
+    if processed_ids:
+        print(f"⏩ {len(processed_ids)} bereits verarbeitete IDs in {IDS_FILE.name} gefunden.")
     else:
-        print("🆕 Keine lastLoaded.txt gefunden – starte von den ältesten Aktivitäten.")
+        print(f"🆕 Keine {IDS_FILE.name} gefunden – starte frischen Export.")
 
     exported = 0
     skipped = 0
@@ -138,8 +131,8 @@ def export_activities(api: Garmin, limit: int | None = None):
         if not activity_id:
             continue
 
-        # Wenn eine ID in lastLoaded steht, überspringen wir alles, was älter oder gleich ist
-        if last_loaded_id and activity_id <= last_loaded_id:
+        # Prüfen, ob die ID bereits verarbeitet wurde
+        if activity_id in processed_ids:
             skipped += 1
             continue
 
@@ -149,8 +142,9 @@ def export_activities(api: Garmin, limit: int | None = None):
         print(f"➡️ Exporting activity {activity_id}")
         export_activity(api, activity)
         
-        # Speichere fortlaufend die ID als "zuletzt geladen"
-        save_last_loaded_id(activity_id)
+        # ID am Ende von ids.txt anhängen
+        append_processed_id(activity_id)
+        processed_ids.add(activity_id)
         
         exported += 1
         processed_count += 1
@@ -189,7 +183,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("🏃‍♂️ Chronological Garmin Export")
+    print("🏃‍♂️ Chronological Garmin Export with ids.txt")
     print("=" * 60)
 
     api = init_api()
