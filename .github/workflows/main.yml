@@ -5,7 +5,7 @@ on:
       limit:
         description: 'Anzahl der maximal zu ladenden Aktivitäten'
         required: true
-        default: '3'
+        default: '50'
         type: string
 jobs:
   sync:
