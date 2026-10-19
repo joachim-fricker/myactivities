@@ -131,6 +131,7 @@
   "endTimeGMT": "2024-09-15 11:11:09",
   "qualifyingDive": false,
   "activityUUID": "cf46e777-3886-4699-ba1e-142f530d6c9d",
+<<<<<<< Updated upstream
   "purposeful": false,
   "pr": false,
   "favorite": false,
@@ -140,4 +141,15 @@
   "autoCalcCalories": false,
   "elevationCorrected": false,
   "atpActivity": false
+=======
+  "autoCalcCalories": false,
+  "elevationCorrected": false,
+  "atpActivity": false,
+  "decoDive": false,
+  "favorite": false,
+  "purposeful": false,
+  "pr": false,
+  "manualActivity": false,
+  "parent": false
+>>>>>>> Stashed changes
 }
