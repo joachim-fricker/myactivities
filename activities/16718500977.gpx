@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx creator="Garmin Connect" version="1.1"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <metadata>
+    <link href="connect.garmin.com">
+      <text>Garmin Connect</text>
+    </link>
+    <time>2024-08-09T08:40:47.000Z</time>
+  </metadata>
+  <trk>
+    <name>Hundwil Rennradfahren</name>
+    <type>road_biking</type>
+    <trkseg>
+      <trkpt lat="47.256260812282562255859375" lon="9.31846040301024913787841796875">
+        <ele>1356.5999755859375</ele>
+        <time>2024-08-09T08:40:47.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>25.0</ns3:atemp>
+            <ns3:hr>119</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.256260812282562255859375" lon="9.31846040301024913787841796875">
+        <ele>1356.4000244140625</ele>
+        <time>2024-08-09T08:40:48.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>25.0</ns3:atemp>
+            <ns3:hr>119</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.2562093473970890045166015625" lon="9.31868067942559719085693359375">
+        <ele>1357</ele>
+        <time>2024-08-09T08:42:14.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>26.0</ns3:atemp>
+            <ns3:hr>116</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.2562031447887420654296875" lon="9.3187191523611545562744140625">
+        <ele>1357</ele>
+        <time>2024-08-09T08:42:17.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>26.0</ns3:atemp>
+            <ns3:hr>117</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.2561463154852390289306640625" lon="9.3187801726162433624267578125">
+        <ele>1357.199951171875</ele>
+        <time>2024-08-09T08:42:25.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>26.0</ns3:atemp>
+            <ns3:hr>117</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.25613416172564029693603515625" lon="9.31877019815146923065185546875">
+        <ele>1357.4000244140625</ele>
+        <time>2024-08-09T08:42:30.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>26.0</ns3:atemp>
+            <ns3:hr>117</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.25613131187856197357177734375" lon="9.31877405382692813873291015625">
+        <ele>1357</ele>
+        <time>2024-08-09T08:42:57.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>27.0</ns3:atemp>
+            <ns3:hr>122</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.25613131187856197357177734375" lon="9.31877405382692813873291015625">
+        <ele>1356.800048828125</ele>
+        <time>2024-08-09T08:42:58.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:atemp>27.0</ns3:atemp>
+            <ns3:hr>122</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
