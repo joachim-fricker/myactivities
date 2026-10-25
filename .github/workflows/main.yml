@@ -1,51 +1,61 @@
 name: Garmin Auto Sync
 on:
- workflow_dispatch:
+  workflow_dispatch:
     inputs:
       limit:
         description: 'Anzahl der maximal zu ladenden Aktivitäten'
         required: true
         default: '5'
         type: string
+
+# Nie zwei Läufe gleichzeitig: parallele Läufe haben die Merge-Konflikte verursacht.
+# Ein zweiter Start wartet, bis der erste fertig ist.
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade garminconnect curl_cffi
- 
-   
+
       - name: Garmin Sync Skript ausführen
         env:
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
-          GARMINTOKENS: ".garminconnect" # Speichert die Tokens direkt im Repo, damit keine erneute Anmeldung nötig ist
         run: |
           python exporter.py ${{ github.event.inputs.limit }}
 
-      - name: Änderungen (Neue Aktivitäten & Tokens) automatisch committen
+      - name: Neue Aktivitäten committen und pushen
         run: |
-          git config --global user.name "Garmin Bot"
-          git config --global user.email "bot@users.noreply.github.com"
-          
-          # Vor dem Pull lokale Änderungen nicht blockieren lassen
-          git add activities/ .garminconnect/
-          git stash || true
-          git pull origin main --rebase || true
-          git stash pop || true
-          
-          git add activities/ .garminconnect/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync: Neue Garmin Aktivitäten" && git push origin main)
+          set -euo pipefail
+          git config user.name "Garmin Bot"
+          git config user.email "bot@users.noreply.github.com"
+
+          git add activities/
+          if git diff --staged --quiet; then
+            echo "Keine neuen Aktivitäten."
+            exit 0
+          fi
+          git commit -m "Auto-sync: Neue Garmin Aktivitäten"
+
+          # Falls inzwischen jemand anderes gepusht hat, darauf aufsetzen.
+          # Bei einem Konflikt bricht der Job mit Fehler ab, statt Konfliktmarker zu committen.
+          git pull --rebase origin main
+          git push origin main
